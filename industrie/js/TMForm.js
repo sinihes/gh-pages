@@ -1,14 +1,17 @@
 //TMForm 1.0.1
 $(window).load(function(){
-	$('#contact-form').TMForm()
+	$('#contact-form').TMForm({
+		recaptchaPublicKey:'6LeZwukSAAAAAG8HbIAE0XeNvCon_cXThgu9afkj'		
+	})
 })
+
 ;(function($){
 	$.fn.TMForm=function(opt){
 		return this.each(TMForm)
 		
 		function TMForm(){
 			var form=$(this)
-			opt=$.extend({					
+			opt=$.extend({	
 					okClass:'ok'
 					,emptyClass:'empty'
 					,invalidClass:'invalid'
@@ -20,6 +23,8 @@ $(window).load(function(){
 					,mailHandlerURL:'bat/MailHandler.php'					
 					,successShowDelay:'4000'
 					,stripHTML:true
+					,recaptchaPublicKey:''
+					,capchaTheme:'clean'
 				},opt)
 				
 			init()
@@ -36,9 +41,25 @@ $(window).load(function(){
 							.addClass(opt.onceVerifiedClass)
 							.trigger('validate.form')
 					})
-					.on('keyup','[data-constraints].once-verified',function(){						
+					.on('keyup','[data-constraints].once-verified',function(){
 						$(this).trigger('validate.form')
 					})
+					.on('keydown','input',function(e){
+						var $this=$(this)
+							,next=$this.parents('label').next('label').find('input,textarea')
+						if(e.keyCode===13)
+							if(next.length)
+								next.focus()
+							else
+								form.submit()
+					})
+					.on('keydown','textarea',function(e){
+						if(e.keyCode===13&&e.ctrlKey)
+							$(this).parents('label').next('label').find('input,textarea').focus()
+					})
+					.on('change','input[type="file"]',function(){						
+						$(this).parents('label').next('label').find('input,textarea').focus()
+					})					
 					.attr({
 						method:'POST'
 						,action:opt.mailHandlerURL
@@ -69,6 +90,10 @@ $(window).load(function(){
 
 				if(opt.stripHTML)
 					form.append('<input type="hidden" name="stripHTML" value="true">')
+
+				if($('label.recaptcha',form).length!==0&&window.Recaptcha)
+					showRecaptcha()
+
 			}
 			
 			function fieldValidate(el){
@@ -99,9 +124,9 @@ $(window).load(function(){
 						
 				if(isInvalid&&!isRequired&&el.val())
 					el.parents('label')
-					.removeClass(opt.emptyClass)
-					.removeClass(opt.okClass)
-					.addClass(opt.invalidClass)
+						.removeClass(opt.emptyClass)
+						.removeClass(opt.okClass)
+						.addClass(opt.invalidClass)
 					
 				if(!result.length)
 					el.parents('label')
@@ -126,12 +151,23 @@ $(window).load(function(){
 			function formSubmit(){
 				var $this=$(this)
 					,modal=$('.'+opt.responseMessageClass)
+					,responseMessage
+
+				modal.on('hidden.bs.modal',function(){
+					if(responseMessage!=='success')
+						$('#recaptcha_reload',form).click()
+						,$('#recaptcha_response_field',form).focus()						
+				})
+
 				$('[data-constraints]',form).trigger('validate.form')
+
+				if($('#recaptcha_response_field',form).val()==='')
+					$('label.recaptcha',form).addClass(opt.emptyClass)
 				
 				if(!$('label.'+opt.invalidClass+',label.'+opt.emptyClass,form).length&&!form.hasClass(opt.processingClass)){
 					form.addClass(opt.processingClass)
 					$this.ajaxSubmit(function(e,d,a,c){
-
+						responseMessage=e
 						if(e=='success'){							
 							form
 								.removeClass(opt.processingClass)
@@ -145,19 +181,20 @@ $(window).load(function(){
 								.removeClass(opt.successClass)
 								.trigger('reset')
 							},opt.successShowDelay)
-						}else{
-							
+						}else{							
 							modal.find('.modal-title').text('Error!')
 							modal.find('.modal-body').html(e)
 
 							form
 								.removeClass(opt.processingClass)
-								.addClass(opt.responseErrorClass)								
+								.addClass(opt.responseErrorClass)
+
+							$('#recaptcha_response_field',form).val('')
 
 							setTimeout(function(){
 								form
 									.removeClass(opt.responseErrorClass)
-									//.trigger('reset')
+									//.trigger('reset')								
 							},opt.successShowDelay)
 						}
 						modal.modal({keyboard:true})						
@@ -168,6 +205,24 @@ $(window).load(function(){
 			
 			function formReset(){
 				fieldDesolation($('[data-constraints]',form))					
+			}
+
+			function showRecaptcha(){
+				$('label.recaptcha',form)
+					.append('<div id="captchadiv"></div>')
+				
+				Recaptcha.create(
+					opt.recaptchaPublicKey
+					,'captchadiv'
+					, {
+						theme:opt.capchaTheme						
+					}
+				)
+
+				form					
+					.on('focus','#recaptcha_response_field',function(){
+						$(this).parents('label').removeClass(opt.emptyClass)						
+					})
 			}
 		}
 	}	
@@ -188,7 +243,7 @@ $(window).load(function(){
 				
 			init()
 			
-			function init(){
+			function init(){				
 				placeholder_text=th.attr('placeholder')
 				placeholder=$(document.createElement('span'))
 				placeholder
@@ -208,7 +263,7 @@ $(window).load(function(){
 					.on('contextmenu',function(){						
 						th.trigger('hide.placeholder').focus()						
 					})
-				
+
 				th
 					.val('')
 					.removeAttr('placeholder')
@@ -286,4 +341,10 @@ regula.custom({
 	,validator:function(){
 		return /^\+?(\d[\d\-\+\(\) ]{5,}\d$)/.test(this.value)
 	}
+})
+regula.custom({
+    name:'ZIP'
+    ,validator:function(){
+        return /^\+?(\d[\d\-\+\(\) ]{3,}\d$)/.test(this.value)
+    }
 })
